@@ -115,6 +115,8 @@ while running:
                     mass_scalar_1 = (2 * obj2.mass) / (obj1.mass + obj2.mass)
                     mass_scalar_2 = (2 * obj1.mass) / (obj1.mass + obj2.mass)
                     pos_diff = obj1.pos - obj2.pos
+                    if np.dot(pos_diff, obj1.vel) > 0 and np.dot(pos_diff, obj2.vel) < 0:
+                        continue
                     dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
                     vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
                     vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
