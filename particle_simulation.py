@@ -22,22 +22,15 @@ class Particle:
             new_vel = self.vel - 2 * np.dot(self.vel, normal) * normal
             self.vel = new_vel
 
-    # Formula from https://en.wikipedia.org/wiki/Elastic_collision#Two-dimensional_collision_with_two_moving_objects
-    # With explanation form https://stackoverflow.com/questions/35211114/2d-elastic-ball-collision-physics
-    def collide_with_particle(self, other):
-        print("Deprecated") 
-        mass_scalar = (2 * other.mass) / (self.mass + other.mass)
-        pos_diff = self.pos - other.pos
-        dot_scalar = np.dot(self.vel - other.vel, pos_diff) / sum(pos_diff ** 2)
-        new_vel = self.vel - mass_scalar * dot_scalar * pos_diff
-        self.vel = new_vel
-
     def set_velocity(self, vel):
         self.vel = vel
 
+    def get_energy(self):
+        return self.mass * sum(self.vel ** 2) / 1000
+
     def draw(self, screen):
         r = int(self.radius)
-        E = self.mass * np.linalg.norm(self.vel) * .001
+        E = self.get_energy() / 100
         col_t = (-1 / (E + 1)) + 1
         c0 = np.array([0, 0, 0]) ** 2
         c1 = np.array([252, 185, 30]) ** 2
@@ -49,6 +42,17 @@ class Particle:
 def update_screen():
     return pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
+
+def random_helium(energy):
+    helium_mass = 4
+    helium_radius = 10
+    v = np.sqrt(energy / helium_mass * 1000)
+    angle = np.random.rand() * np.pi * 2
+    vel = np.array([np.cos(angle), np.sin(angle)]) * v
+    pos = np.random.random(2) * np.array(screen_size)
+    return Particle(pos, vel, helium_mass, helium_radius)
+
+
 pygame.init()
 
 screen_size = width, height = 500, 500
@@ -58,8 +62,7 @@ screen = update_screen()
 pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
-objects = [Particle((200, 200), (50, 0), 10, 15),
-           Particle((300, 215), (-30, 0), 10, 15)]
+objects = [random_helium(e) for e in np.random.rand(50) * 1000]
 
 bucket_count = 5, 5
 physics_buckets = np.empty(bucket_count, dtype=object)
@@ -74,10 +77,7 @@ while running:
             running = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                new_particle = Particle(np.random.random(2) * np.array(screen_size),
-                    (np.random.random(2) - 0.5) * 2 * initial_speed,
-                    10,
-                    15)
+                new_particle = random_helium(np.random.rand() * 10)
                 objects.append(new_particle)
             if event.key == pygame.K_ESCAPE:
                 running = False
