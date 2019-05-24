@@ -50,13 +50,15 @@ def update_screen():
     return pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
 
-def draw_histogram(screen, objects, bins=20, bin_size=40, max_height=100,
+def draw_histogram(screen, objects_list, bins=20, bin_size=40, max_height=100,
                    color=(200, 200, 200)):
     counts = np.zeros(bins)
-    for b in range(bins):
-        lower = b * bin_size
-        upper = (b + 1) * bin_size
-        counts[b] = sum([1 for obj in objects if lower <= obj.get_energy() < upper])
+    for bucket in objects_list:
+        for obj in bucket:
+            E = obj.get_energy()
+            b = int(E / bin_size)
+            if b < bins:
+                counts[b] += 1
 
     scale = max_height / max(counts)
 
@@ -77,8 +79,8 @@ def random_helium(energy):
     return Particle(pos, vel, helium_mass, helium_radius)
 
 
-def calc_bucket(obj, buckets, screen_size):
-    buckets_x, buckets_y = buckets.shape
+def calc_bucket(obj, buckets_shape, screen_size):
+    buckets_x, buckets_y = buckets_shape
     bucket_size_x = screen_size[0] / buckets_x
     bucket_size_y = screen_size[1] / buckets_y
 
@@ -86,6 +88,15 @@ def calc_bucket(obj, buckets, screen_size):
     new_bucket_y = clamp_index(int(obj.pos[1] // bucket_size_y), buckets_y)
 
     return (new_bucket_x, new_bucket_y)
+
+
+def neighbor_buckets(index):
+    i, j = index
+    return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
+
+
+def indices(x, y):
+    return [(i, j) for i in range(x) for j in range(y)]
 
 
 pygame.init()
@@ -99,15 +110,12 @@ clock = pygame.time.Clock()
 
 bucket_count = buckets_x, buckets_y = 10, 10
 physics_buckets = np.empty(bucket_count, dtype=list)
-for j in range(buckets_y):
-    for i in range(buckets_x):
-        physics_buckets[i, j] = list()
+for i, j in indices(buckets_x, buckets_y):
+    physics_buckets[i, j] = list()
 
-objects = [random_helium(e) for e in np.random.rand(200) * 1000]
-for obj in objects:
-    b = calc_bucket(obj, physics_buckets, screen_size)
+for obj in [random_helium(e) for e in np.random.rand(200) * 1000]:
+    b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
-
 
 running = True
 simulating = True
@@ -115,24 +123,25 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT: 
             running = False
+        # Key event
         if event.type == pygame.KEYDOWN:
+            # New Particle
             if event.key == pygame.K_SPACE:
-                pass
-                #new_particle = random_helium(np.random.rand() * 10)
-                #objects.append(new_particle)
+                new_particle = random_helium(np.random.rand() * 10)
+                b = calc_bucket(new_particle, bucket_count, screen_size)
+                physics_buckets[b].append(obj)
+            # Quit
             if event.key == pygame.K_ESCAPE:
                 running = False
+            # Pause
             if event.key == pygame.K_s:
                 simulating = not simulating
+        # Resize
         if event.type == pygame.VIDEORESIZE:
             screen_size = width, height = event.w, event.h
-            update_screen()
+            screen = update_screen()
 
     dt = clock.tick(100) / 1000.
-
-    print(dt)
-
-    screen.fill((255, 255, 255)) # Draw background
 
     if simulating:
         # Move every Particle
@@ -144,7 +153,7 @@ while running:
         for i, rows in enumerate(physics_buckets):
             for j, bucket in enumerate(rows):
                 for obj in bucket:
-                    b = calc_bucket(obj, physics_buckets, screen_size)
+                    b = calc_bucket(obj, bucket_count, screen_size)
                     if b != (i, j):
                         bucket.remove(obj)
                         physics_buckets[b].append(obj)
@@ -167,35 +176,42 @@ while running:
                 if obj.pos[1] >= height - obj.radius:
                     obj.collide_with_surface((0, -1))
 
+        counter = 0
         # Particle-Particle collisions
-        for j in range(buckets_y):
-            for i in range(buckets_x):
-                for dj in [0, 1]:
-                    for di in [0, 1]:
-                        index = (i + di, j + dj)
-                        if not is_valid_index(index, physics_buckets):
+        for bucket_index in indices(buckets_x, buckets_y):
+            for other_index in neighbor_buckets(bucket_index):
+                if not is_valid_index(other_index, physics_buckets):
+                    continue
+                for i, obj1 in enumerate(physics_buckets[bucket_index]):
+                    # Prevents double calculation where obj1 and obj2 are swapped
+                    start_index = i + 1 if bucket_index == other_index else 0
+                    for obj2 in physics_buckets[other_index][start_index:]:
+                        counter += 1
+                        # Check collision with distance
+                        max_dist = (obj1.radius + obj2.radius) ** 2
+                        if sum((obj1.pos - obj2.pos) ** 2) > max_dist:
                             continue
-                        for obj1 in physics_buckets[i, j]:
-                            for obj2 in physics_buckets[index]:
-                                if obj1 is obj2:
-                                    continue
-                                max_dist = (obj1.radius + obj2.radius) ** 2
-                                if sum((obj1.pos - obj2.pos) ** 2) > max_dist:
-                                    continue
-                                # Formula from https://en.wikipedia.org/wiki/Elastic_collision#Two-dimensional_collision_with_two_moving_objects
-                                # With explanation form https://stackoverflow.com/questions/35211114/2d-elastic-ball-collision-physics
-                                mass_scalar_1 = (2 * obj2.mass) / (obj1.mass + obj2.mass)
-                                mass_scalar_2 = (2 * obj1.mass) / (obj1.mass + obj2.mass)
-                                pos_diff = obj1.pos - obj2.pos
-                                if np.dot(pos_diff, obj1.vel) > 0 and np.dot(pos_diff, obj2.vel) < 0:
-                                    continue
-                                dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
-                                vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
-                                vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
-                                obj1.set_velocity(vel_1)
-                                obj2.set_velocity(vel_2)
+                        # Formula from https://en.wikipedia.org/wiki/Elastic_collision#Two-dimensional_collision_with_two_moving_objects
+                        # With explanation form https://stackoverflow.com/questions/35211114/2d-elastic-ball-collision-physics
+                        mass_scalar_1 = (2 * obj2.mass) / (obj1.mass + obj2.mass)
+                        mass_scalar_2 = (2 * obj1.mass) / (obj1.mass + obj2.mass)
+                        pos_diff = obj1.pos - obj2.pos
+                        # Prevents countinuos collisions by checking whether the two
+                        # objects move towards each other.
+                        if np.dot(pos_diff, obj1.vel) > 0 and np.dot(pos_diff, obj2.vel) < 0:
+                            continue
+                        dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
+                        vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
+                        vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
+                        obj1.set_velocity(vel_1)
+                        obj2.set_velocity(vel_2)
 
-    #draw_histogram(screen, objects)
+    print(dt, counter)
+    
+    # Draw background
+    screen.fill((255, 255, 255))
+
+    draw_histogram(screen, physics_buckets.flat)
 
     # Draw objects
     for bucket in physics_buckets.flat:
