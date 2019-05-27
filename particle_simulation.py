@@ -2,6 +2,7 @@ import numpy as np
 import pygame
 
 
+# Freestanding utils
 def calc_normal(arr):
     return np.array(arr) / np.linalg.norm(arr)
 
@@ -12,6 +13,10 @@ def is_valid_index(index, container):
     i_arr = np.array(index)
     shape = np.array(container.shape)
     return (i_arr < shape).all() and (i_arr >= 0).all()
+
+def indices(x, y):
+    return [(i, j) for i in range(x) for j in range(y)]
+
 
 class Particle:
     def __init__(self, pos, vel, mass, radius):
@@ -32,13 +37,10 @@ class Particle:
     def set_velocity(self, vel):
         self.vel = vel
 
-    def get_energy(self):
-        return self.mass * sum(self.vel ** 2) / 1000
-
     def draw(self, screen):
         r = int(self.radius)
-        E = self.get_energy() / 100
-        col_t = (-1 / (E + 1)) + 1
+        V = np.linalg.norm(self.vel)
+        col_t = (-1 / (V + 1)) + 1
         c0 = np.array([0, 0, 0]) ** 2
         c1 = np.array([252, 185, 30]) ** 2
         c = tuple(np.sqrt(c1 * col_t + c0 * (1 - col_t)))
@@ -50,28 +52,32 @@ def update_screen():
     return pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
 
-def draw_histogram(screen, objects_list, bins=20, bin_size=40, max_height=100,
-                   color=(200, 200, 200)):
+def get_speed_histogram(objects_list, bins=50, bin_size=30):
     counts = np.zeros(bins)
     for bucket in objects_list:
         for obj in bucket:
-            E = obj.get_energy()
-            b = int(E / bin_size)
+            V = np.linalg.norm(obj.vel)
+            b = int(V / bin_size)
             if b < bins:
                 counts[b] += 1
+    return counts
 
-    scale = max_height / max(counts)
+
+def draw_histogram(screen, hist_data, max_height=100,
+                   color=(200, 200, 200)):
+    scale = max_height / max(hist_data)
+    bins = len(hist_data)
 
     width = screen.get_width() / bins
     screen_height = screen.get_height()
-    for i, height in enumerate(counts * scale):
+    for i, height in enumerate(hist_data * scale):
         rect = (i * width, screen_height, width, -height)
         pygame.draw.rect(screen, color, rect, 0)
 
 
 def random_helium(energy):
     helium_mass = 4
-    helium_radius = 7
+    helium_radius = 4
     v = np.sqrt(energy / helium_mass * 1000)
     angle = np.random.rand() * np.pi * 2
     vel = np.array([np.cos(angle), np.sin(angle)]) * v
@@ -95,11 +101,10 @@ def neighbor_buckets(index):
     return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
 
 
-def indices(x, y):
-    return [(i, j) for i in range(x) for j in range(y)]
 
-
+# Init Pygame
 pygame.init()
+pygame.font.init()
 
 screen_size = width, height = 900, 700
 sizeArr = np.array(screen_size)
@@ -108,15 +113,21 @@ screen = update_screen()
 pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
+# Init Objects
 bucket_count = buckets_x, buckets_y = 10, 10
 physics_buckets = np.empty(bucket_count, dtype=list)
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
-for obj in [random_helium(e) for e in np.random.rand(200) * 1000]:
+for obj in [random_helium(e) for e in np.ones(200) * 1000]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
+# Init graphics
+total_speed_hist = None
+debug_font = pygame.font.Font(None, 24)
+
+# Main Loop
 running = True
 simulating = True
 while running:
@@ -136,12 +147,16 @@ while running:
             # Pause
             if event.key == pygame.K_s:
                 simulating = not simulating
+            # Reset Histogram
+            if event.key == pygame.K_r:
+                total_speed_hist = None
         # Resize
         if event.type == pygame.VIDEORESIZE:
             screen_size = width, height = event.w, event.h
             screen = update_screen()
 
-    dt = clock.tick(100) / 1000.
+    frame_time = clock.tick(100) / 1000.
+    dt = 0.01
 
     if simulating:
         # Move every Particle
@@ -206,18 +221,31 @@ while running:
                         obj1.set_velocity(vel_1)
                         obj2.set_velocity(vel_2)
 
-    print(dt, counter)
-    
+    #print(dt, counter)
+
     # Draw background
     screen.fill((255, 255, 255))
 
-    draw_histogram(screen, physics_buckets.flat)
+    # Draw histogram
+    speed_hist = get_speed_histogram(physics_buckets.flat)
+    if total_speed_hist is None:
+        total_speed_hist = speed_hist
+    else:
+        total_speed_hist += speed_hist
+    draw_histogram(screen, total_speed_hist)
 
     # Draw objects
     for bucket in physics_buckets.flat:
         for obj in bucket:
             obj.draw(screen)
 
+    # Draw text
+    simulation_speed = dt / frame_time
+    text_surface = debug_font.render("sim @ {:.3f}x".format(simulation_speed), True, (0, 0, 0))
+    screen.blit(text_surface, (10, 10))
+    text_surface = debug_font.render("{} checks".format(counter), True, (0, 0, 0))
+    screen.blit(text_surface, (10, 35))
+    
 
     pygame.display.flip() # Display frame
 
