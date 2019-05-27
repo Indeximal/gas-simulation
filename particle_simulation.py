@@ -26,6 +26,7 @@ class Particle:
         self.radius = float(radius)
 
     def tick(self, dt):
+        self.vel += PHYSICS.gravity * dt
         self.pos += self.vel * dt
 
     def collide_with_surface(self, surface_normal):
@@ -34,12 +35,9 @@ class Particle:
             new_vel = self.vel - 2 * np.dot(self.vel, normal) * normal
             self.vel = new_vel
 
-    def set_velocity(self, vel):
-        self.vel = vel
-
     def draw(self, screen):
         r = int(self.radius)
-        V = np.linalg.norm(self.vel)
+        V = np.linalg.norm(self.vel) * .5
         col_t = (-1 / (V + 1)) + 1
         c0 = np.array([0, 0, 0]) ** 2
         c1 = np.array([252, 185, 30]) ** 2
@@ -75,12 +73,11 @@ def draw_histogram(screen, hist_data, max_height=100,
         pygame.draw.rect(screen, color, rect, 0)
 
 
-def random_helium(energy):
+def random_helium(speed):
     helium_mass = 4
     helium_radius = 4
-    v = np.sqrt(energy / helium_mass * 1000)
     angle = np.random.rand() * np.pi * 2
-    vel = np.array([np.cos(angle), np.sin(angle)]) * v
+    vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     pos = np.random.random(2) * np.array(screen_size)
     return Particle(pos, vel, helium_mass, helium_radius)
 
@@ -114,14 +111,17 @@ pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
 # Init Objects
-bucket_count = buckets_x, buckets_y = 10, 10
+bucket_count = buckets_x, buckets_y = 12, 8
 physics_buckets = np.empty(bucket_count, dtype=list)
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
-for obj in [random_helium(e) for e in np.ones(200) * 1000]:
+for obj in [random_helium(e) for e in np.ones(150) * 500]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
+
+class PHYSICS:
+    gravity = np.array([0., 300.])
 
 # Init graphics
 total_speed_hist = None
@@ -218,8 +218,8 @@ while running:
                         dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
                         vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
                         vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
-                        obj1.set_velocity(vel_1)
-                        obj2.set_velocity(vel_2)
+                        obj1.vel = vel_1
+                        obj2.vel = vel_2
 
     #print(dt, counter)
 
