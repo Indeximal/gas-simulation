@@ -37,13 +37,34 @@ class Particle:
 
     def draw(self, screen):
         r = int(self.radius)
-        V = np.linalg.norm(self.vel) * .5
+        V = np.linalg.norm(self.vel) * .01
         col_t = (-1 / (V + 1)) + 1
         c0 = np.array([0, 0, 0]) ** 2
         c1 = np.array([252, 185, 30]) ** 2
         c = tuple(np.sqrt(c1 * col_t + c0 * (1 - col_t)))
         p = tuple(self.pos.astype(int))
         pygame.draw.circle(screen, c, p, r, 0)
+
+
+class Bond:
+    def __init__(self, obj1, obj2, constant, lenght):
+        self.obj1 = obj1
+        self.obj2 = obj2
+        self.constant = constant
+        self.lenght = lenght
+
+    def tick(self, dt):
+        diff = self.obj1.pos - self.obj2.pos
+        distance = np.linalg.norm(diff)
+        normal = (diff / distance)
+        deflection = distance - self.lenght
+        dv = - normal * deflection * self.constant * dt
+        self.obj1.vel += dv
+        self.obj2.vel -= dv
+
+    def draw(self, screen):
+        pygame.draw.line(screen, (128, 128, 128), self.obj1.pos, self.obj2.pos, 3)
+
 
 
 def update_screen():
@@ -75,11 +96,26 @@ def draw_histogram(screen, hist_data, max_height=100,
 
 def random_helium(speed):
     helium_mass = 4
-    helium_radius = 4
+    helium_radius = 6
     angle = np.random.rand() * np.pi * 2
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     pos = np.random.random(2) * np.array(screen_size)
     return Particle(pos, vel, helium_mass, helium_radius)
+
+
+def random_hydogen2(speed):
+    hydrogen_mass = 1
+    hydrogen_radius = 4
+    h2_bond_len = 12
+    h2_bond_strength = 1000
+    angle = np.random.rand() * np.pi * 2
+    vel = np.array([np.cos(angle), np.sin(angle)]) * speed
+    pos = np.random.random(2) * np.array(screen_size)
+    pos2 = pos + [0, h2_bond_len]
+    h1 = Particle(pos, vel, hydrogen_mass, hydrogen_radius)
+    h2 = Particle(pos2, vel, hydrogen_mass, hydrogen_radius)
+    bond = Bond(h1, h2, h2_bond_strength, h2_bond_len)
+    return (h1, h2, bond)
 
 
 def calc_bucket(obj, buckets_shape, screen_size):
@@ -113,12 +149,21 @@ clock = pygame.time.Clock()
 # Init Objects
 bucket_count = buckets_x, buckets_y = 12, 8
 physics_buckets = np.empty(bucket_count, dtype=list)
+bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
-for obj in [random_helium(e) for e in np.ones(150) * 500]:
+for obj in [random_helium(e) for e in np.ones(50) * 500]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
+
+for o1, o2, bond in [random_hydogen2(e) for e in np.ones(10) * 500]:
+    b1 = calc_bucket(o1, bucket_count, screen_size)
+    physics_buckets[b1].append(o1)
+    b2 = calc_bucket(o2, bucket_count, screen_size)
+    physics_buckets[b2].append(o2)
+    bonds.append(bond)
+
 
 class PHYSICS:
     gravity = np.array([0., 300.])
@@ -156,7 +201,7 @@ while running:
             screen = update_screen()
 
     frame_time = clock.tick(100) / 1000.
-    dt = 0.01
+    dt = 0.005
 
     if simulating:
         # Move every Particle
@@ -221,6 +266,10 @@ while running:
                         obj1.vel = vel_1
                         obj2.vel = vel_2
 
+
+    for bond in bonds:
+        bond.tick(dt)
+
     #print(dt, counter)
 
     # Draw background
@@ -233,6 +282,10 @@ while running:
     else:
         total_speed_hist += speed_hist
     draw_histogram(screen, total_speed_hist)
+
+    # Draw Bonds
+    for bond in bonds:
+        bond.draw(screen)
 
     # Draw objects
     for bucket in physics_buckets.flat:
