@@ -1,4 +1,5 @@
 from collections import deque
+import csv
 
 import numpy as np
 import pygame
@@ -21,11 +22,12 @@ def indices(x, y):
 
 
 class Particle:
-    def __init__(self, pos, vel, mass, radius):
+    def __init__(self, pos, vel, mass, radius, flag=""):
         self.pos = np.array(pos).astype(float)
         self.vel = np.array(vel).astype(float)
         self.mass = float(mass)
         self.radius = float(radius)
+        self.flag = flag
 
     def tick(self, dt):
         self.vel += PHYSICS.gravity * dt
@@ -49,16 +51,15 @@ class Particle:
 
 
 class Colored_Particle(Particle):
-    def __init__(self, pos, vel, mass, radius, color):
-        super(Colored_Particle, self).__init__(pos, vel, mass, radius)
+    def __init__(self, pos, vel, mass, radius, color, flag=""):
+        super(Colored_Particle, self).__init__(pos, vel, mass, radius, flag)
         self.color = color
 
     def draw(self, screen):
         r = int(self.radius)
         p = tuple(self.pos.astype(int))
         pygame.draw.circle(screen, self.color, p, r + 2, 0)
-        super(Colored_Particle, self).draw(screen)
-        
+        super(Colored_Particle, self).draw(screen)      
 
 
 class Bond:
@@ -81,11 +82,6 @@ class Bond:
         pygame.draw.line(screen, (128, 128, 128), self.obj1.pos, self.obj2.pos, 3)
 
 
-
-def update_screen():
-    return pygame.display.set_mode(screen_size, pygame.RESIZABLE)
-
-
 def get_speed_histogram(objects_list, bins=50, bin_size=30):
     counts = np.zeros(bins)
     for bucket in objects_list:
@@ -96,6 +92,16 @@ def get_speed_histogram(objects_list, bins=50, bin_size=30):
                 counts[b] += 1
     return counts
 
+
+def get_avg_pos_for_flag(flat_bucket_iter, flag):
+    total = np.zeros(2)
+    count = 0
+    for bucket in flat_bucket_iter:
+        for obj in bucket:
+            if obj.flag == flag:
+                total += obj.pos
+                count += 1
+    return total / count
 
 def draw_histogram(screen, hist_data, max_height=100,
                    color=(200, 200, 200)):
@@ -118,7 +124,8 @@ def random_helium(speed):
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     pos = np.random.random(2) * np.array(screen_size)
     color = helium_color_1 if pos[0] < screen_size[0] / 2 else helium_color_2
-    return Colored_Particle(pos, vel, helium_mass, helium_radius, color)
+    flag = "left" if pos[0] < screen_size[0] / 2 else "right"
+    return Colored_Particle(pos, vel, helium_mass, helium_radius, color, flag=flag)
 
 
 def random_hydogen2(speed):
@@ -160,7 +167,7 @@ pygame.font.init()
 screen_size = width, height = 900, 700
 sizeArr = np.array(screen_size)
 
-screen = update_screen()
+screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
@@ -171,7 +178,7 @@ bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
-for obj in [random_helium(e) for e in np.ones(250) * 100]:
+for obj in [random_helium(e) for e in np.ones(250) * 200]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
@@ -185,7 +192,7 @@ for o1, o2, bond in [random_hydogen2(e) for e in np.ones(0) * 500]:
 class PHYSICS:
     gravity = np.array([0., 0.])
 
-# Init graphics
+# Init graphics and data collection
 total_speed_hist = None
 debug_font = pygame.font.Font(None, 24)
 checks_deque = deque(maxlen=10)
@@ -219,7 +226,7 @@ while running:
         # Resize
         if event.type == pygame.VIDEORESIZE:
             screen_size = width, height = event.w, event.h
-            screen = update_screen()
+            screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
     frame_time = clock.tick(100) / 1000.
     ticks += 1
@@ -331,6 +338,14 @@ while running:
     render_text("{:.1f} collisions".format(avg_collisions), 35)
     avg_checks = sum(checks_deque) / len(checks_deque)
     render_text("{:.1f} checks".format(avg_checks), 60)
+    entropy = np.linalg.norm(get_avg_pos_for_flag(physics_buckets.flat, "right")
+        - get_avg_pos_for_flag(physics_buckets.flat, "left"))
+    render_text("entropy {:.2f}".format(entropy), 85)
+
+    if ticks % 10 == 0:
+        with open("data.csv", mode="a") as csv_file:
+            csv_writer = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csv_writer.writerow([ticks, entropy])
     
 
     pygame.display.flip() # Display frame
