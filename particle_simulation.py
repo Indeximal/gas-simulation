@@ -1,3 +1,5 @@
+from collections import deque
+
 import numpy as np
 import pygame
 
@@ -44,6 +46,19 @@ class Particle:
         c = tuple(np.sqrt(c1 * col_t + c0 * (1 - col_t)))
         p = tuple(self.pos.astype(int))
         pygame.draw.circle(screen, c, p, r, 0)
+
+
+class Colored_Particle(Particle):
+    def __init__(self, pos, vel, mass, radius, color):
+        super(Colored_Particle, self).__init__(pos, vel, mass, radius)
+        self.color = color
+
+    def draw(self, screen):
+        r = int(self.radius)
+        p = tuple(self.pos.astype(int))
+        pygame.draw.circle(screen, self.color, p, r + 2, 0)
+        super(Colored_Particle, self).draw(screen)
+        
 
 
 class Bond:
@@ -97,10 +112,13 @@ def draw_histogram(screen, hist_data, max_height=100,
 def random_helium(speed):
     helium_mass = 4
     helium_radius = 6
+    helium_color_1 = (150, 150, 255)
+    helium_color_2 = (255, 50, 50)
     angle = np.random.rand() * np.pi * 2
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     pos = np.random.random(2) * np.array(screen_size)
-    return Particle(pos, vel, helium_mass, helium_radius)
+    color = helium_color_1 if pos[0] < screen_size[0] / 2 else helium_color_2
+    return Colored_Particle(pos, vel, helium_mass, helium_radius, color)
 
 
 def random_hydogen2(speed):
@@ -153,28 +171,31 @@ bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
-for obj in [random_helium(e) for e in np.ones(50) * 500]:
+for obj in [random_helium(e) for e in np.ones(250) * 100]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
-for o1, o2, bond in [random_hydogen2(e) for e in np.ones(10) * 500]:
+for o1, o2, bond in [random_hydogen2(e) for e in np.ones(0) * 500]:
     b1 = calc_bucket(o1, bucket_count, screen_size)
     physics_buckets[b1].append(o1)
     b2 = calc_bucket(o2, bucket_count, screen_size)
     physics_buckets[b2].append(o2)
     bonds.append(bond)
 
-
 class PHYSICS:
-    gravity = np.array([0., 300.])
+    gravity = np.array([0., 0.])
 
 # Init graphics
 total_speed_hist = None
 debug_font = pygame.font.Font(None, 24)
+checks_deque = deque(maxlen=10)
+coll_deque = deque(maxlen=10)
 
 # Main Loop
 running = True
 simulating = True
+ticks = 0
+dt = 0.01
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT: 
@@ -201,76 +222,80 @@ while running:
             screen = update_screen()
 
     frame_time = clock.tick(100) / 1000.
-    dt = 0.005
+    ticks += 1
 
-    if simulating:
-        # Move every Particle
-        for bucket in physics_buckets.flat:
+    if not simulating:
+        continue
+
+    # Move every Particle
+    for bucket in physics_buckets.flat:
+        for obj in bucket:
+            obj.tick(dt)
+
+    # Update buckets
+    for i, rows in enumerate(physics_buckets):
+        for j, bucket in enumerate(rows):
             for obj in bucket:
-                obj.tick(dt)
+                b = calc_bucket(obj, bucket_count, screen_size)
+                if b != (i, j):
+                    bucket.remove(obj)
+                    physics_buckets[b].append(obj)
 
-        # Update buckets
-        for i, rows in enumerate(physics_buckets):
-            for j, bucket in enumerate(rows):
-                for obj in bucket:
-                    b = calc_bucket(obj, bucket_count, screen_size)
-                    if b != (i, j):
-                        bucket.remove(obj)
-                        physics_buckets[b].append(obj)
+    # Particle-Wall collisions, optimized
+    for bucket in physics_buckets[0]:
+        for obj in bucket:
+            if obj.pos[0] < obj.radius:
+                obj.collide_with_surface((1, 0))
+    for bucket in physics_buckets[-1]:
+        for obj in bucket:
+            if obj.pos[0] >= width - obj.radius:
+                obj.collide_with_surface((-1, 0))
+    for bucket in physics_buckets[..., 0]:
+        for obj in bucket:
+            if obj.pos[1] < obj.radius:
+                obj.collide_with_surface((0, 1))
+    for bucket in physics_buckets[..., -1]:
+        for obj in bucket:
+            if obj.pos[1] >= height - obj.radius:
+                obj.collide_with_surface((0, -1))
 
-        # Particle-Wall collisions, optimized
-        for bucket in physics_buckets[0]:
-            for obj in bucket:
-                if obj.pos[0] < obj.radius:
-                    obj.collide_with_surface((1, 0))
-        for bucket in physics_buckets[-1]:
-            for obj in bucket:
-                if obj.pos[0] >= width - obj.radius:
-                    obj.collide_with_surface((-1, 0))
-        for bucket in physics_buckets[..., 0]:
-            for obj in bucket:
-                if obj.pos[1] < obj.radius:
-                    obj.collide_with_surface((0, 1))
-        for bucket in physics_buckets[..., -1]:
-            for obj in bucket:
-                if obj.pos[1] >= height - obj.radius:
-                    obj.collide_with_surface((0, -1))
+    check_counter = 0
+    coll_counter = 0
 
-        counter = 0
-        # Particle-Particle collisions
-        for bucket_index in indices(buckets_x, buckets_y):
-            for other_index in neighbor_buckets(bucket_index):
-                if not is_valid_index(other_index, physics_buckets):
-                    continue
-                for i, obj1 in enumerate(physics_buckets[bucket_index]):
-                    # Prevents double calculation where obj1 and obj2 are swapped
-                    start_index = i + 1 if bucket_index == other_index else 0
-                    for obj2 in physics_buckets[other_index][start_index:]:
-                        counter += 1
-                        # Check collision with distance
-                        max_dist = (obj1.radius + obj2.radius) ** 2
-                        if sum((obj1.pos - obj2.pos) ** 2) > max_dist:
-                            continue
-                        # Formula from https://en.wikipedia.org/wiki/Elastic_collision#Two-dimensional_collision_with_two_moving_objects
-                        # With explanation form https://stackoverflow.com/questions/35211114/2d-elastic-ball-collision-physics
-                        mass_scalar_1 = (2 * obj2.mass) / (obj1.mass + obj2.mass)
-                        mass_scalar_2 = (2 * obj1.mass) / (obj1.mass + obj2.mass)
-                        pos_diff = obj1.pos - obj2.pos
-                        # Prevents countinuos collisions by checking whether the two
-                        # objects move towards each other.
-                        if np.dot(pos_diff, obj1.vel) > 0 and np.dot(pos_diff, obj2.vel) < 0:
-                            continue
-                        dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
-                        vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
-                        vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
-                        obj1.vel = vel_1
-                        obj2.vel = vel_2
+    # Particle-Particle collisions
+    for bucket_index in indices(buckets_x, buckets_y):
+        for other_index in neighbor_buckets(bucket_index):
+            if not is_valid_index(other_index, physics_buckets):
+                continue
+            for i, obj1 in enumerate(physics_buckets[bucket_index]):
+                # Prevents double calculation where obj1 and obj2 are swapped
+                start_index = i + 1 if bucket_index == other_index else 0
+                for obj2 in physics_buckets[other_index][start_index:]:
+                    check_counter += 1
+                    # Check collision with distance
+                    max_dist = (obj1.radius + obj2.radius) ** 2
+                    if sum((obj1.pos - obj2.pos) ** 2) > max_dist:
+                        continue
+                    coll_counter += 1
+                    # Formula from https://en.wikipedia.org/wiki/Elastic_collision#Two-dimensional_collision_with_two_moving_objects
+                    # With explanation form https://stackoverflow.com/questions/35211114/2d-elastic-ball-collision-physics
+                    mass_scalar_1 = (2 * obj2.mass) / (obj1.mass + obj2.mass)
+                    mass_scalar_2 = (2 * obj1.mass) / (obj1.mass + obj2.mass)
+                    pos_diff = obj1.pos - obj2.pos
+                    # Prevents countinuos collisions by checking whether the two
+                    # objects move towards each other.
+                    if np.dot(pos_diff, obj1.vel) > 0 and np.dot(pos_diff, obj2.vel) < 0:
+                        continue
+                    dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
+                    vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
+                    vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
+                    obj1.vel = vel_1
+                    obj2.vel = vel_2
 
-
+    # Update covalent bonds
     for bond in bonds:
         bond.tick(dt)
 
-    #print(dt, counter)
 
     # Draw background
     screen.fill((255, 255, 255))
@@ -292,12 +317,20 @@ while running:
         for obj in bucket:
             obj.draw(screen)
 
+    checks_deque.append(check_counter)
+    coll_deque.append(coll_counter)
+
     # Draw text
-    simulation_speed = dt / frame_time
-    text_surface = debug_font.render("sim @ {:.3f}x".format(simulation_speed), True, (0, 0, 0))
-    screen.blit(text_surface, (10, 10))
-    text_surface = debug_font.render("{} checks".format(counter), True, (0, 0, 0))
-    screen.blit(text_surface, (10, 35))
+    def render_text(text, y):
+        text_surface = debug_font.render(text, True, (0, 0, 0))
+        screen.blit(text_surface, (10, y))
+
+    simulation_speed = 1 / frame_time
+    render_text("tick {} @ {:.3f} t/s".format(ticks, simulation_speed), 10)
+    avg_collisions = sum(coll_deque) / len(coll_deque)
+    render_text("{:.1f} collisions".format(avg_collisions), 35)
+    avg_checks = sum(checks_deque) / len(checks_deque)
+    render_text("{:.1f} checks".format(avg_checks), 60)
     
 
     pygame.display.flip() # Display frame
