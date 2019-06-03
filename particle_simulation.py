@@ -82,17 +82,6 @@ class Bond:
         pygame.draw.line(screen, (128, 128, 128), self.obj1.pos, self.obj2.pos, 3)
 
 
-def get_speed_histogram(objects_list, bins=50, bin_size=30):
-    counts = np.zeros(bins)
-    for bucket in objects_list:
-        for obj in bucket:
-            V = np.linalg.norm(obj.vel)
-            b = int(V / bin_size)
-            if b < bins:
-                counts[b] += 1
-    return counts
-
-
 def get_avg_pos_for_flag(flat_bucket_iter, flag):
     total = np.zeros(2)
     count = 0
@@ -102,6 +91,18 @@ def get_avg_pos_for_flag(flat_bucket_iter, flag):
                 total += obj.pos
                 count += 1
     return total / count
+
+
+def get_speed_histogram(objects_list, bins=50, bin_size=15):
+    counts = np.zeros(bins)
+    for bucket in objects_list:
+        for obj in bucket:
+            V = np.linalg.norm(obj.vel)
+            b = int(V / bin_size)
+            if b < bins:
+                counts[b] += 1
+    return counts
+
 
 def draw_histogram(screen, hist_data, max_height=100,
                    color=(200, 200, 200)):
@@ -115,19 +116,24 @@ def draw_histogram(screen, hist_data, max_height=100,
         pygame.draw.rect(screen, color, rect, 0)
 
 
-def random_helium(speed):
+def random_helium(energy):
     helium_mass = 4
     helium_radius = 6
     helium_color_1 = (150, 150, 255)
     helium_color_2 = (255, 50, 50)
+    max_height = energy / abs(PHYSICS.gravity[1]) / helium_mass
+    pos = np.random.random(2) * np.array((screen_size[0], min(max_height, screen_size[1])))
+    e_pot = abs(PHYSICS.gravity[1]) * helium_mass * pos[1]
+    e_kin = energy - e_pot
+    speed = np.sqrt(2 * e_kin / helium_mass)
     angle = np.random.rand() * np.pi * 2
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
-    pos = np.random.random(2) * np.array(screen_size)
     color = helium_color_1 if pos[0] < screen_size[0] / 2 else helium_color_2
     flag = "left" if pos[0] < screen_size[0] / 2 else "right"
     return Colored_Particle(pos, vel, helium_mass, helium_radius, color, flag=flag)
 
 
+# TODO ENERGY
 def random_hydogen2(speed):
     hydrogen_mass = 1
     hydrogen_radius = 4
@@ -159,6 +165,9 @@ def neighbor_buckets(index):
     return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
 
 
+class PHYSICS:
+    gravity = np.array([0., -50.])
+
 
 # Init Pygame
 pygame.init()
@@ -172,25 +181,24 @@ pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
 # Init Objects
-bucket_count = buckets_x, buckets_y = 12, 8
+bucket_count = buckets_x, buckets_y = 15, 12
 physics_buckets = np.empty(bucket_count, dtype=list)
 bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
-for obj in [random_helium(e) for e in np.ones(250) * 200]:
+# Generate helium objects
+for obj in [random_helium(e) for e in np.ones(250) * 200_000]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
+# Generate hydrogen molecules
 for o1, o2, bond in [random_hydogen2(e) for e in np.ones(0) * 500]:
     b1 = calc_bucket(o1, bucket_count, screen_size)
     physics_buckets[b1].append(o1)
     b2 = calc_bucket(o2, bucket_count, screen_size)
     physics_buckets[b2].append(o2)
     bonds.append(bond)
-
-class PHYSICS:
-    gravity = np.array([0., 0.])
 
 # Init graphics and data collection
 total_speed_hist = None
@@ -209,17 +217,12 @@ while running:
             running = False
         # Key event
         if event.type == pygame.KEYDOWN:
-            # New Particle
+            # Pause
             if event.key == pygame.K_SPACE:
-                new_particle = random_helium(np.random.rand() * 10)
-                b = calc_bucket(new_particle, bucket_count, screen_size)
-                physics_buckets[b].append(obj)
+                simulating = not simulating
             # Quit
             if event.key == pygame.K_ESCAPE:
                 running = False
-            # Pause
-            if event.key == pygame.K_s:
-                simulating = not simulating
             # Reset Histogram
             if event.key == pygame.K_r:
                 total_speed_hist = None
@@ -228,11 +231,11 @@ while running:
             screen_size = width, height = event.w, event.h
             screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
-    frame_time = clock.tick(100) / 1000.
-    ticks += 1
-
     if not simulating:
         continue
+
+    frame_time = clock.tick() / 1000.
+    ticks += 1
 
     # Move every Particle
     for bucket in physics_buckets.flat:
@@ -342,10 +345,10 @@ while running:
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
     render_text("entropy {:.2f}".format(entropy), 85)
 
-    if ticks % 10 == 0:
-        with open("data.csv", mode="a") as csv_file:
-            csv_writer = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            csv_writer.writerow([ticks, entropy])
+    # if ticks % 10 == 0:
+    #     with open("data.csv", mode="a") as csv_file:
+    #         csv_writer = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    #         csv_writer.writerow([ticks, entropy])
     
 
     pygame.display.flip() # Display frame
