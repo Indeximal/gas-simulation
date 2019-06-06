@@ -20,6 +20,10 @@ def is_valid_index(index, container):
 def indices(x, y):
     return [(i, j) for i in range(x) for j in range(y)]
 
+def neighbor_buckets(index):
+    i, j = index
+    return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
+
 
 class Particle:
     def __init__(self, pos, vel, mass, radius, flag=""):
@@ -121,8 +125,11 @@ def random_helium(energy):
     helium_radius = 6
     helium_color_1 = (150, 150, 255)
     helium_color_2 = (255, 50, 50)
-    max_height = energy / abs(PHYSICS.gravity[1]) / helium_mass
-    pos = np.random.random(2) * np.array((screen_size[0], min(max_height, screen_size[1])))
+    if PHYSICS.gravity[1] != 0:
+        max_height = min(energy / abs(PHYSICS.gravity[1]) / helium_mass, screen_size[1])
+    else:
+        max_height = screen_size[1]
+    pos = np.random.random(2) * np.array((screen_size[0], max_height))
     e_pot = abs(PHYSICS.gravity[1]) * helium_mass * pos[1]
     e_kin = energy - e_pot
     speed = np.sqrt(2 * e_kin / helium_mass)
@@ -158,11 +165,6 @@ def calc_bucket(obj, buckets_shape, screen_size):
     new_bucket_y = clamp_index(int(obj.pos[1] // bucket_size_y), buckets_y)
 
     return (new_bucket_x, new_bucket_y)
-
-
-def neighbor_buckets(index):
-    i, j = index
-    return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
 
 
 class PHYSICS:
@@ -231,10 +233,11 @@ while running:
             screen_size = width, height = event.w, event.h
             screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 
+    frame_time = clock.tick() / 1000.
+
     if not simulating:
         continue
 
-    frame_time = clock.tick() / 1000.
     ticks += 1
 
     # Move every Particle
