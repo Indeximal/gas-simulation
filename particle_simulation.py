@@ -33,6 +33,9 @@ class Particle:
         self.radius = float(radius)
         self.flag = flag
 
+    def get_energy(self):
+        return .5 * self.mass * sum(self.vel ** 2) - self.mass * PHYSICS.gravity[1] * self.pos[1]
+
     def tick(self, dt):
         self.vel += PHYSICS.gravity * dt
         self.pos += self.vel * dt
@@ -108,9 +111,9 @@ def get_speed_histogram(objects_list, bins=50, bin_size=15):
     return counts
 
 
-def draw_histogram(screen, hist_data, max_height=100,
+def draw_histogram(screen, hist_data, max_height=150,
                    color=(200, 200, 200)):
-    scale = max_height / max(hist_data)
+    scale = 2.0e-2
     bins = len(hist_data)
 
     width = screen.get_width() / bins
@@ -137,7 +140,7 @@ def random_helium(energy):
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     color = helium_color_1 if pos[0] < screen_size[0] / 2 else helium_color_2
     flag = "left" if pos[0] < screen_size[0] / 2 else "right"
-    return Colored_Particle(pos, vel, helium_mass, helium_radius, color, flag=flag)
+    return Particle(pos, vel, helium_mass, helium_radius, flag=flag)
 
 
 # TODO ENERGY
@@ -168,14 +171,14 @@ def calc_bucket(obj, buckets_shape, screen_size):
 
 
 class PHYSICS:
-    gravity = np.array([0., -50.])
+    gravity = np.array([0., -0.])
 
 
 # Init Pygame
 pygame.init()
 pygame.font.init()
 
-screen_size = width, height = 900, 700
+screen_size = width, height = 600, 200
 sizeArr = np.array(screen_size)
 
 screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
@@ -183,14 +186,14 @@ pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
 # Init Objects
-bucket_count = buckets_x, buckets_y = 15, 12
+bucket_count = buckets_x, buckets_y = 8, 3
 physics_buckets = np.empty(bucket_count, dtype=list)
 bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
 # Generate helium objects
-for obj in [random_helium(e) for e in np.ones(250) * 200_000]:
+for obj in [random_helium(e) for e in np.ones(200) * 50_000]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
@@ -237,6 +240,11 @@ while running:
 
     if not simulating:
         continue
+
+    if ticks == 100:
+        total_speed_hist = None
+    if ticks == 600:
+        simulating = False
 
     ticks += 1
 
@@ -343,10 +351,12 @@ while running:
     avg_collisions = sum(coll_deque) / len(coll_deque)
     render_text("{:.1f} collisions".format(avg_collisions), 35)
     avg_checks = sum(checks_deque) / len(checks_deque)
-    render_text("{:.1f} checks".format(avg_checks), 60)
+    #render_text("{:.1f} checks".format(avg_checks), 60)
     entropy = np.linalg.norm(get_avg_pos_for_flag(physics_buckets.flat, "right")
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
-    render_text("entropy {:.2f}".format(entropy), 85)
+    # render_text("entropy {:.2f}".format(entropy), 85)
+    total_energy = sum([obj.get_energy() for bucket in physics_buckets.flat for obj in bucket])
+    render_text("total energy {:.2E}".format(total_energy), 60)
 
     # if ticks % 10 == 0:
     #     with open("data.csv", mode="a") as csv_file:
