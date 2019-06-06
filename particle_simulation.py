@@ -168,14 +168,14 @@ def calc_bucket(obj, buckets_shape, screen_size):
 
 
 class PHYSICS:
-    gravity = np.array([0., -50.])
+    gravity = np.array([0., -0.])
 
 
 # Init Pygame
 pygame.init()
 pygame.font.init()
 
-screen_size = width, height = 900, 700
+screen_size = width, height = 600, 200
 sizeArr = np.array(screen_size)
 
 screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
@@ -183,14 +183,14 @@ pygame.display.set_caption("Simulation")
 clock = pygame.time.Clock()
 
 # Init Objects
-bucket_count = buckets_x, buckets_y = 15, 12
+bucket_count = buckets_x, buckets_y = 8, 3
 physics_buckets = np.empty(bucket_count, dtype=list)
 bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
 # Generate helium objects
-for obj in [random_helium(e) for e in np.ones(250) * 200_000]:
+for obj in [random_helium(e) for e in np.ones(150) * 200_000]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
@@ -237,6 +237,9 @@ while running:
 
     if not simulating:
         continue
+
+    if ticks in (0, 250, 1000):
+        simulating = False
 
     ticks += 1
 
@@ -313,14 +316,6 @@ while running:
     # Draw background
     screen.fill((255, 255, 255))
 
-    # Draw histogram
-    speed_hist = get_speed_histogram(physics_buckets.flat)
-    if total_speed_hist is None:
-        total_speed_hist = speed_hist
-    else:
-        total_speed_hist += speed_hist
-    draw_histogram(screen, total_speed_hist)
-
     # Draw Bonds
     for bond in bonds:
         bond.draw(screen)
@@ -343,10 +338,10 @@ while running:
     avg_collisions = sum(coll_deque) / len(coll_deque)
     render_text("{:.1f} collisions".format(avg_collisions), 35)
     avg_checks = sum(checks_deque) / len(checks_deque)
-    render_text("{:.1f} checks".format(avg_checks), 60)
+    #render_text("{:.1f} checks".format(avg_checks), 60)
     entropy = np.linalg.norm(get_avg_pos_for_flag(physics_buckets.flat, "right")
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
-    render_text("entropy {:.2f}".format(entropy), 85)
+    render_text("separation {:.2f}".format(entropy), 60)
 
     # if ticks % 10 == 0:
     #     with open("data.csv", mode="a") as csv_file:
