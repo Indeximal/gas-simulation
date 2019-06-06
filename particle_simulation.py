@@ -238,8 +238,8 @@ while running:
     if not simulating:
         continue
 
-    if ticks in (0, 250, 1000):
-        simulating = False
+    if ticks in (1000,):
+       simulating = False
 
     ticks += 1
 
@@ -343,10 +343,10 @@ while running:
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
     render_text("separation {:.2f}".format(entropy), 60)
 
-    # if ticks % 10 == 0:
-    #     with open("data.csv", mode="a") as csv_file:
-    #         csv_writer = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    #         csv_writer.writerow([ticks, entropy])
+    if ticks % 10 == 0:
+        with open("data{:.0f}.csv".format(PHYSICS.gravity[1]), mode="a") as csv_file:
+            csv_writer = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csv_writer.writerow([ticks, entropy, coll_counter])
     
 
     pygame.display.flip() # Display frame
