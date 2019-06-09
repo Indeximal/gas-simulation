@@ -6,25 +6,32 @@ import pygame
 
 # Freestanding utils
 def calc_normal(arr):
+    """Returns the input vector scaled to have a euclidic lenght of 1"""
     return np.array(arr) / np.linalg.norm(arr)
 
 def clamp_index(n, lenght):
+    """Return a valid index for a list of length length"""
     return max(min(n, lenght - 1), 0)
 
 def is_valid_index(index, container):
+    """Returns whether the index is valid for container"""
     i_arr = np.array(index)
     shape = np.array(container.shape)
     return (i_arr < shape).all() and (i_arr >= 0).all()
 
 def indices(x, y):
+    """Returns a list of 2d tuples adressing every index"""
     return [(i, j) for i in range(x) for j in range(y)]
 
 def neighbor_buckets(index):
+    """Returns a list of 2d tuples"""
     i, j = index
     return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
 
 
+# Classes
 class Particle:
+    """A class to represent a single ball-like particle"""
     def __init__(self, pos, vel, mass, radius, flag=""):
         self.pos = np.array(pos).astype(float)
         self.vel = np.array(vel).astype(float)
@@ -51,6 +58,7 @@ class Particle:
         col_t = (-1 / (V + 1)) + 1
         c0 = np.array([0, 0, 0]) ** 2
         c1 = np.array([252, 185, 30]) ** 2
+        # Quadratic interpolate the color based on the speed
         c = tuple(np.sqrt(c1 * col_t + c0 * (1 - col_t)))
         p = tuple(self.pos.astype(int))
         pygame.draw.circle(screen, c, p, r, 0)
@@ -68,6 +76,7 @@ class Colored_Particle(Particle):
         super(Colored_Particle, self).draw(screen)
 
 
+# Graphic utils
 def get_avg_pos_for_flag(flat_bucket_iter, flag):
     total = np.zeros(2)
     count = 0
@@ -102,12 +111,14 @@ def draw_histogram(screen, hist_data, max_height=100,
         pygame.draw.rect(screen, color, rect, 0)
 
 
+# Init utils
 def random_helium(energy):
     helium_mass = 4
     helium_radius = 6 # 31 pm
     helium_color_1 = (150, 150, 255)
     helium_color_2 = (255, 50, 50)
     if PHYSICS.gravity[1] != 0:
+        # calculate maximal height so e_pos isn't > energy
         max_height = min(energy / abs(PHYSICS.gravity[1]) / helium_mass, screen_size[1])
     else:
         max_height = screen_size[1]
@@ -117,6 +128,7 @@ def random_helium(energy):
     speed = np.sqrt(2 * e_kin / helium_mass)
     angle = np.random.rand() * np.pi * 2
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
+    # Used to show diffusion
     color = helium_color_1 if pos[0] < screen_size[0] / 2 else helium_color_2
     flag = "left" if pos[0] < screen_size[0] / 2 else "right"
     return Colored_Particle(pos, vel, helium_mass, helium_radius, color, flag=flag)
@@ -150,6 +162,7 @@ def calc_bucket(obj, buckets_shape, screen_size):
     return (new_bucket_x, new_bucket_y)
 
 
+# Static class to define Physiscs constants
 class PHYSICS:
     gravity = np.array([0., -50.])
 
@@ -212,17 +225,18 @@ while running:
 
     frame_time = clock.tick() / 1000.
 
+    # Pause functionality
     if not simulating:
         continue
 
     ticks += 1
 
-    # Move every Particle
+    # Move every Particle and apply gravity
     for bucket in physics_buckets.flat:
         for obj in bucket:
             obj.tick(dt)
 
-    # Update buckets
+    # Update the buckets objects lie in
     for i, rows in enumerate(physics_buckets):
         for j, bucket in enumerate(rows):
             for obj in bucket:
@@ -253,13 +267,17 @@ while running:
     coll_counter = 0
 
     # Particle-Particle collisions
+    # For every bucket...
     for bucket_index in indices(buckets_x, buckets_y):
+        # For the 4 buckets around the lower right corner..
         for other_index in neighbor_buckets(bucket_index):
             if not is_valid_index(other_index, physics_buckets):
                 continue
+            # For all objets in the current bucket..
             for i, obj1 in enumerate(physics_buckets[bucket_index]):
                 # Prevents double calculation where obj1 and obj2 are swapped
                 start_index = i + 1 if bucket_index == other_index else 0
+                # For all objects in the other bucket or the rest in the current
                 for obj2 in physics_buckets[other_index][start_index:]:
                     check_counter += 1
                     # Check collision with distance
@@ -307,6 +325,7 @@ while running:
         text_surface = debug_font.render(text, True, (0, 0, 0))
         screen.blit(text_surface, (10, y))
 
+    # Calculate some output values
     simulation_speed = 1 / frame_time
     avg_collisions = sum(coll_deque) / len(coll_deque)
     avg_checks = sum(checks_deque) / len(checks_deque)
@@ -314,12 +333,14 @@ while running:
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
     total_energy = sum([obj.get_energy for bucket in physics_buckets.flat for obj in bucket])
 
+    # Display info values
     render_text("tick {} @ {:.3f} t/s".format(ticks, simulation_speed), 10)
     render_text("{:.1f} collisions/t".format(avg_collisions), 35)
     render_text("{:.1f} checks/t".format(avg_checks), 60)
     render_text("separation {:.2f}".format(separation), 85)
     render_text("total energy {:.2E}".format(separation), 110)
 
-    pygame.display.flip() # Display frame
+    # Display frame
+    pygame.display.flip()
 
 
