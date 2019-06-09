@@ -1,5 +1,4 @@
 from collections import deque
-import csv
 
 import numpy as np
 import pygame
@@ -66,27 +65,7 @@ class Colored_Particle(Particle):
         r = int(self.radius)
         p = tuple(self.pos.astype(int))
         pygame.draw.circle(screen, self.color, p, r + 2, 0)
-        super(Colored_Particle, self).draw(screen)      
-
-
-class Bond:
-    def __init__(self, obj1, obj2, constant, lenght):
-        self.obj1 = obj1
-        self.obj2 = obj2
-        self.constant = constant
-        self.lenght = lenght
-
-    def tick(self, dt):
-        diff = self.obj1.pos - self.obj2.pos
-        distance = np.linalg.norm(diff)
-        normal = (diff / distance)
-        deflection = distance - self.lenght
-        dv = - normal * deflection * self.constant * dt
-        self.obj1.vel += dv
-        self.obj2.vel -= dv
-
-    def draw(self, screen):
-        pygame.draw.line(screen, (128, 128, 128), self.obj1.pos, self.obj2.pos, 3)
+        super(Colored_Particle, self).draw(screen)
 
 
 def get_avg_pos_for_flag(flat_bucket_iter, flag):
@@ -142,6 +121,7 @@ def random_helium(energy):
     flag = "left" if pos[0] < screen_size[0] / 2 else "right"
     return Colored_Particle(pos, vel, helium_mass, helium_radius, color, flag=flag)
 
+
 def random_argon(energy):
     argon_mass = 40
     argon_radius = 14 # 71 pm
@@ -158,21 +138,6 @@ def random_argon(energy):
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     return Colored_Particle(pos, vel, argon_mass, argon_radius, argon_color)
 
-# TODO ENERGY
-def random_hydogen2(speed):
-    hydrogen_mass = 1
-    hydrogen_radius = 4
-    h2_bond_len = 12
-    h2_bond_strength = 1000
-    angle = np.random.rand() * np.pi * 2
-    vel = np.array([np.cos(angle), np.sin(angle)]) * speed
-    pos = np.random.random(2) * np.array(screen_size)
-    pos2 = pos + [0, h2_bond_len]
-    h1 = Particle(pos, vel, hydrogen_mass, hydrogen_radius)
-    h2 = Particle(pos2, vel, hydrogen_mass, hydrogen_radius)
-    bond = Bond(h1, h2, h2_bond_strength, h2_bond_len)
-    return (h1, h2, bond)
-
 
 def calc_bucket(obj, buckets_shape, screen_size):
     buckets_x, buckets_y = buckets_shape
@@ -188,13 +153,11 @@ def calc_bucket(obj, buckets_shape, screen_size):
 class PHYSICS:
     gravity = np.array([0., -50.])
 
-
 # Init Pygame
 pygame.init()
 pygame.font.init()
 
 screen_size = width, height = 900, 700
-sizeArr = np.array(screen_size)
 
 screen = pygame.display.set_mode(screen_size, pygame.RESIZABLE)
 pygame.display.set_caption("Simulation")
@@ -203,7 +166,6 @@ clock = pygame.time.Clock()
 # Init Objects
 bucket_count = buckets_x, buckets_y = 15, 12
 physics_buckets = np.empty(bucket_count, dtype=list)
-bonds = list()
 for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
@@ -216,14 +178,6 @@ for obj in [random_helium(e) for e in np.ones(100) * 200_000]:
 for obj in [random_argon(e) for e in np.ones(50) * 5_000_000]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
-
-# Generate hydrogen molecules
-for o1, o2, bond in [random_hydogen2(e) for e in np.ones(0) * 500]:
-    b1 = calc_bucket(o1, bucket_count, screen_size)
-    physics_buckets[b1].append(o1)
-    b2 = calc_bucket(o2, bucket_count, screen_size)
-    physics_buckets[b2].append(o2)
-    bonds.append(bond)
 
 # Init graphics and data collection
 total_speed_hist = None
@@ -328,10 +282,6 @@ while running:
                     obj1.vel = vel_1
                     obj2.vel = vel_2
 
-    # Update covalent bonds
-    for bond in bonds:
-        bond.tick(dt)
-
 
     # Draw background
     screen.fill((255, 255, 255))
@@ -343,10 +293,6 @@ while running:
     else:
         total_speed_hist += speed_hist
     draw_histogram(screen, total_speed_hist)
-
-    # Draw Bonds
-    for bond in bonds:
-        bond.draw(screen)
 
     # Draw objects
     for bucket in physics_buckets.flat:
@@ -362,20 +308,17 @@ while running:
         screen.blit(text_surface, (10, y))
 
     simulation_speed = 1 / frame_time
-    render_text("tick {} @ {:.3f} t/s".format(ticks, simulation_speed), 10)
     avg_collisions = sum(coll_deque) / len(coll_deque)
-    render_text("{:.1f} collisions".format(avg_collisions), 35)
     avg_checks = sum(checks_deque) / len(checks_deque)
-    render_text("{:.1f} checks".format(avg_checks), 60)
-    entropy = np.linalg.norm(get_avg_pos_for_flag(physics_buckets.flat, "right")
+    separation = np.linalg.norm(get_avg_pos_for_flag(physics_buckets.flat, "right")
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
-    render_text("entropy {:.2f}".format(entropy), 85)
+    total_energy = sum([obj.get_energy for bucket in physics_buckets.flat for obj in bucket])
 
-    # if ticks % 10 == 0:
-    #     with open("data.csv", mode="a") as csv_file:
-    #         csv_writer = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    #         csv_writer.writerow([ticks, entropy])
-    
+    render_text("tick {} @ {:.3f} t/s".format(ticks, simulation_speed), 10)
+    render_text("{:.1f} collisions/t".format(avg_collisions), 35)
+    render_text("{:.1f} checks/t".format(avg_checks), 60)
+    render_text("separation {:.2f}".format(separation), 85)
+    render_text("total energy {:.2E}".format(separation), 110)
 
     pygame.display.flip() # Display frame
 
