@@ -33,6 +33,9 @@ class Particle:
         self.radius = float(radius)
         self.flag = flag
 
+    def get_energy(self):
+        return .5 * self.mass * sum(self.vel ** 2) - self.mass * PHYSICS.gravity[1] * self.pos[1]
+
     def tick(self, dt):
         self.vel += PHYSICS.gravity * dt
         self.pos += self.vel * dt
@@ -122,7 +125,7 @@ def draw_histogram(screen, hist_data, max_height=100,
 
 def random_helium(energy):
     helium_mass = 4
-    helium_radius = 6
+    helium_radius = 6 # 31 pm
     helium_color_1 = (150, 150, 255)
     helium_color_2 = (255, 50, 50)
     if PHYSICS.gravity[1] != 0:
@@ -139,6 +142,21 @@ def random_helium(energy):
     flag = "left" if pos[0] < screen_size[0] / 2 else "right"
     return Colored_Particle(pos, vel, helium_mass, helium_radius, color, flag=flag)
 
+def random_argon(energy):
+    argon_mass = 40
+    argon_radius = 14 # 71 pm
+    argon_color = (242, 96, 213)
+    if PHYSICS.gravity[1] != 0:
+        max_height = min(energy / abs(PHYSICS.gravity[1]) / argon_mass, screen_size[1])
+    else:
+        max_height = screen_size[1]
+    pos = np.random.random(2) * np.array((screen_size[0], max_height))
+    e_pot = abs(PHYSICS.gravity[1]) * argon_mass * pos[1]
+    e_kin = energy - e_pot
+    speed = np.sqrt(2 * e_kin / argon_mass)
+    angle = np.random.rand() * np.pi * 2
+    vel = np.array([np.cos(angle), np.sin(angle)]) * speed
+    return Colored_Particle(pos, vel, argon_mass, argon_radius, argon_color)
 
 # TODO ENERGY
 def random_hydogen2(speed):
@@ -190,7 +208,12 @@ for i, j in indices(buckets_x, buckets_y):
     physics_buckets[i, j] = list()
 
 # Generate helium objects
-for obj in [random_helium(e) for e in np.ones(250) * 200_000]:
+for obj in [random_helium(e) for e in np.ones(100) * 200_000]:
+    b = calc_bucket(obj, bucket_count, screen_size)
+    physics_buckets[b].append(obj)
+
+# Generate helium objects
+for obj in [random_argon(e) for e in np.ones(50) * 5_000_000]:
     b = calc_bucket(obj, bucket_count, screen_size)
     physics_buckets[b].append(obj)
 
@@ -301,7 +324,7 @@ while running:
                         continue
                     dot_scalar = np.dot(obj1.vel - obj2.vel, pos_diff) / sum(pos_diff ** 2)
                     vel_1 = obj1.vel - mass_scalar_1 * dot_scalar * pos_diff
-                    vel_2 = obj2.vel + mass_scalar_1 * dot_scalar * pos_diff
+                    vel_2 = obj2.vel + mass_scalar_2 * dot_scalar * pos_diff
                     obj1.vel = vel_1
                     obj2.vel = vel_2
 
