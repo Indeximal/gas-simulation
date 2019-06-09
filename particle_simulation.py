@@ -28,6 +28,17 @@ def neighbor_buckets(index):
     i, j = index
     return [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]
 
+def calc_bucket(obj, buckets_shape, screen_size):
+    """Determine the index of the bucket the object should be in"""
+    buckets_x, buckets_y = buckets_shape
+    bucket_size_x = screen_size[0] / buckets_x
+    bucket_size_y = screen_size[1] / buckets_y
+
+    new_bucket_x = clamp_index(int(obj.pos[0] // bucket_size_x), buckets_x)
+    new_bucket_y = clamp_index(int(obj.pos[1] // bucket_size_y), buckets_y)
+
+    return (new_bucket_x, new_bucket_y)
+
 
 # Classes
 class Particle:
@@ -149,17 +160,6 @@ def random_argon(energy):
     angle = np.random.rand() * np.pi * 2
     vel = np.array([np.cos(angle), np.sin(angle)]) * speed
     return Colored_Particle(pos, vel, argon_mass, argon_radius, argon_color)
-
-
-def calc_bucket(obj, buckets_shape, screen_size):
-    buckets_x, buckets_y = buckets_shape
-    bucket_size_x = screen_size[0] / buckets_x
-    bucket_size_y = screen_size[1] / buckets_y
-
-    new_bucket_x = clamp_index(int(obj.pos[0] // bucket_size_x), buckets_x)
-    new_bucket_y = clamp_index(int(obj.pos[1] // bucket_size_y), buckets_y)
-
-    return (new_bucket_x, new_bucket_y)
 
 
 # Static class to define Physiscs constants
@@ -331,7 +331,7 @@ while running:
     avg_checks = sum(checks_deque) / len(checks_deque)
     separation = np.linalg.norm(get_avg_pos_for_flag(physics_buckets.flat, "right")
         - get_avg_pos_for_flag(physics_buckets.flat, "left"))
-    total_energy = sum([obj.get_energy for bucket in physics_buckets.flat for obj in bucket])
+    total_energy = sum([obj.get_energy() for bucket in physics_buckets.flat for obj in bucket])
 
     # Display info values
     render_text("tick {} @ {:.3f} t/s".format(ticks, simulation_speed), 10)
